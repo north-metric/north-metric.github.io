@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stripe churn signals: a field guide | North Metric open source</title>
+<meta name="description" content="Which Stripe webhook events and fields warn you that a SaaS customer is about to churn, what each one means, and the first move to make. Open source, MIT licensed.">
+<style>
+  :root { --bg:#fbfaf7; --fg:#1d1c1a; --muted:#5f5b53; --line:#e4e0d8; --accent:#1f5f8b; --code:#f1eee7; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141413; --fg:#ecebe6; --muted:#a8a49b; --line:#2e2d2a; --accent:#7fb4dc; --code:#22211f; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 16px 64px; }
+  h1 { font-size: 2rem; line-height:1.2; margin: 0 0 12px; }
+  h2 { font-size: 1.3rem; margin: 40px 0 12px; }
+  p, li { color: var(--fg); }
+  .lede { color: var(--muted); font-size: 1.1rem; margin-bottom: 24px; }
+  a { color: var(--accent); }
+  code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; background: var(--code); }
+  tr:last-child td { border-bottom: 0; }
+  .meta { display:flex; flex-wrap:wrap; gap:8px 20px; font-size:.95rem; color: var(--muted); margin-bottom: 8px; }
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: .95rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Stripe churn signals: a field guide</h1>
+  <p class="lede">Most small SaaS teams hear about churn from a "subscription canceled" email. By then the customer decided weeks ago. Stripe already records most of the warning signs. This page lists them, what each one means, and the first move to make.</p>
+  <div class="meta">
+    <span>Open source, MIT licensed</span>
+    <a href="https://github.com/north-metric/stripe-churn-signals">Code on GitHub: stripe-churn-signals</a>
+  </div>
+
+  <h2>The signals</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Signal</th><th>Where it shows up in Stripe</th><th>What it means</th><th>First move</th></tr></thead>
+    <tbody>
+      <tr><td>Scheduled cancellation</td><td><code>customer.subscription.updated</code>, <code>cancel_at_period_end</code> flips to <code>true</code></td><td>The customer already clicked cancel. You have until the period ends.</td><td>A personal note that answers the stated reason (<code>cancellation_details</code>).</td></tr>
+      <tr><td>Failed payment, retries left</td><td><code>invoice.payment_failed</code> with <code>next_payment_attempt</code> set</td><td>Involuntary churn in progress. Often recoverable.</td><td>Depends on the decline code (see below).</td></tr>
+      <tr><td>Failed payment, retries over</td><td><code>invoice.payment_failed</code> with <code>next_payment_attempt</code> = <code>null</code></td><td>The subscription is about to be canceled, marked unpaid or left past due, depending on your settings.</td><td>Card-update link right away.</td></tr>
+      <tr><td>Seat drop</td><td><code>customer.subscription.updated</code>, item <code>quantity</code> went down in <code>previous_attributes</code></td><td>Contraction usually comes before churn.</td><td>Check in and offer a right-sized plan.</td></tr>
+      <tr><td>Downgrade</td><td><code>customer.subscription.updated</code>, item price went down</td><td>Same as a seat drop: a value or budget problem.</td><td>Find out which feature they stopped needing.</td></tr>
+      <tr><td>Card about to expire</td><td><code>card.exp_month</code> / <code>card.exp_year</code> on the default payment method</td><td>A future failed payment. The card updater fixes many (<code>payment_method.automatically_updated</code>), not all.</td><td>A short "your card expires soon" email before renewal.</td></tr>
+      <tr><td>Paused or trial ending</td><td><code>customer.subscription.paused</code>, <code>customer.subscription.trial_will_end</code></td><td>A decision point is close.</td><td>Show the value they got before the date.</td></tr>
+      <tr><td>Renewal coming up</td><td><code>invoice.upcoming</code></td><td>Annual customers churn on a schedule.</td><td>A value recap 30 to 60 days before renewal, sooner if usage is weak.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Usage declines aren't a Stripe event. Compare each account's weekly active users or core actions with its own previous 28-day average. A drop of about 50% over 14 days is a useful starting threshold.</p>
+
+  <h2>Decline codes: retry, ask, or stop</h2>
+  <p>The decline code on a failed charge decides the first move.</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Group</th><th>Codes</th><th>What to do</th></tr></thead>
+    <tbody>
+      <tr><td>Soft decline: a retry can work</td><td><a href="https://www.northmetric.io/stripe-decline-codes/insufficient_funds">insufficient_funds</a>, <a href="https://www.northmetric.io/stripe-decline-codes/do_not_honor">do_not_honor</a>, <a href="https://www.northmetric.io/stripe-decline-codes/generic_decline">generic_decline</a>, <a href="https://www.northmetric.io/stripe-decline-codes/processing_error">processing_error</a></td><td>Let Smart Retries run, then send a short note with a card-update link.</td></tr>
+      <tr><td>Customer has to fix it</td><td><a href="https://www.northmetric.io/stripe-decline-codes/expired_card">expired_card</a>, <a href="https://www.northmetric.io/stripe-decline-codes/incorrect_number">incorrect_number</a>, <a href="https://www.northmetric.io/stripe-decline-codes/incorrect_cvc">incorrect_cvc</a>, <a href="https://www.northmetric.io/stripe-decline-codes/authentication_required">authentication_required</a></td><td>A retry won't help. Email the customer now.</td></tr>
+      <tr><td>Hard decline: don't retry</td><td><a href="https://www.northmetric.io/stripe-decline-codes/lost_card">lost_card</a>, <a href="https://www.northmetric.io/stripe-decline-codes/stolen_card">stolen_card</a>, <a href="https://www.northmetric.io/stripe-decline-codes/fraudulent">fraudulent</a></td><td>Stop retrying. Ask for a different payment method and don't mention the bank's reason.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>All 20 codes, with plain-language meanings: <a href="https://www.northmetric.io/stripe-decline-codes">Stripe decline codes explained</a>.</p>
+
+  <h2>A weekly routine (about an hour)</h2>
+  <ol>
+    <li>Pull the lists: scheduled cancellations, <code>past_due</code> subscriptions, seat drops and downgrades from the last 7 days, cards expiring this month or next, usage declines, and renewals in the next 30 to 60 days.</li>
+    <li>Rank: two or more strong signals is high risk, one strong signal is medium, one weak signal is low. Within each band, sort by monthly revenue.</li>
+    <li>Act: match the move to the signal, as in the tables above.</li>
+    <li>Close the loop: log what you did and whether the customer stayed.</li>
+  </ol>
+  <p>Before buying anything, turn on Smart Retries and the failed-payment and expiring-card emails in Stripe's Billing settings. They're free.</p>
+
+  <h2>Free tools and benchmarks</h2>
+  <ul>
+    <li><a href="https://www.northmetric.io/benchmarks/saas-churn-rate">SaaS churn rate benchmarks</a>, by stage and MRR band</li>
+    <li><a href="https://www.northmetric.io/tools/churn-rate-calculator">Churn rate calculator</a> for customer and revenue churn</li>
+    <li><a href="https://www.northmetric.io/tools/mrr-calculator">MRR calculator for Stripe</a>: annual plans, discounts and trials</li>
+  </ul>
+
+  <h2>Run it yourself</h2>
+  <p><a href="https://github.com/north-metric/stripe-churn-signals">stripe-churn-signals</a> is a small Node.js webhook listener. It verifies Stripe signatures, de-duplicates retried events and writes each signal above to a CSV. It makes no Stripe API calls. The repo also has a <a href="https://github.com/north-metric/stripe-churn-signals/blob/main/CHECKLIST.md">weekly checklist</a>.</p>
+
+  <footer>
+    Maintained by <a href="https://www.northmetric.io">North Metric</a>, churn prevention for SaaS on Stripe. Code is MIT licensed. Webhook field names can change between Stripe API versions, so check them against the version your account is pinned to.
+  </footer>
+</main>
+</body>
+</html>
