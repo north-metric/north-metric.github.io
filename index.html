@@ -67,6 +67,10 @@
   </div>
   <p>All 20 codes, with plain-language meanings: <a href="https://www.northmetric.io/stripe-decline-codes">Stripe decline codes explained</a>.</p>
 
+  <h2>After Smart Retries end</h2>
+  <p>For hard declines, and for invoices with no payment method on file, Stripe keeps retries scheduled but runs none of them until the customer adds a new card. Ask for one on day 0 instead of waiting out the schedule. For soft declines, wait until <code>invoice.payment_failed</code> arrives with <code>next_payment_attempt</code> set to <code>null</code>, then send one personal note with the invoice's payment link. Count a payment as recovered only if it arrives after your note.</p>
+  <p>More: <a href="https://www.northmetric.io/failed-payment-recovery">failed payment recovery after Stripe's retries</a>, and a code walk-through of sorting declines into wait, ask now and review on <a href="https://dev.to/northmetric/what-stripes-smart-retries-dont-recover-and-what-to-do-on-day-0-3aik">Dev.to</a>.</p>
+
   <h2>A weekly routine (about an hour)</h2>
   <ol>
     <li>Pull the lists: scheduled cancellations, <code>past_due</code> subscriptions, seat drops and downgrades from the last 7 days, cards expiring this month or next, usage declines, and renewals in the next 30 to 60 days.</li>
